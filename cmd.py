@@ -9,6 +9,6 @@ def write_read(x):
     return data
 
 while True:
-    num = input("Enter a number: ") # Taking input from user
-    value = write_read(num)
+    input_text = input("Enter text to send over Serial: ") # Taking input from user
+    value = write_read(input_text)
     print(value) # printing the value
