@@ -1,16 +1,25 @@
 #include <Servo.h>
+#include <LiquidCrystal.h>
 
+// global variables
 String status;
 float cmd_pos;
 float servo_pos;
 
-int SERVO_MIN_ANGLE_DEG = 10;
+// configuration settings
+int SERVO_MIN_ANGLE_DEG = 0;
 int SERVO_MAX_ANGLE_DEG = 180;
-int SERVO_SWEEP_DELAY_MS = 1;        // milliseconds between position steps
-int SERVO_PWM_PIN = 10;      // Servo PWM
-int SONAR_TRIGGER_PIN = 11;  // Trig
-int SONAR_RESPONSE_PIN = 12; // Echo
+int SERVO_SWEEP_DELAY_MS = 15; // milliseconds between position steps
+
+// hardware assignments
+const int LCD_RS = 7, LCD_EN = 6, LCD_D4 = 5, LCD_D5 = 4, LCD_D6 = 3, LCD_D7 = 2;
+const int SERVO_PWM_PIN = 10;
+const int SONAR_TRIGGER_PIN = 11;
+const int SONAR_RESPONSE_PIN = 12;
+
+// initialize hardware drivers
 Servo servo;
+LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_D4, LCD_D5, LCD_D6, LCD_D7);
 
 void setup()
 {
@@ -25,7 +34,7 @@ void setup()
     digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
 
     // wave hello
-    makeTelemJson(-1, readSonarCm(SONAR_TRIGGER_PIN, SONAR_RESPONSE_PIN), -1, "initializing");
+    makeTelemJson("initializing", -1, -1, readSonarCm(SONAR_TRIGGER_PIN, SONAR_RESPONSE_PIN));
     moveServo(SERVO_MAX_ANGLE_DEG);
     moveServo(SERVO_MIN_ANGLE_DEG);
 }
@@ -34,7 +43,7 @@ void loop()
 {
     status = "idle";
     cmd_pos = -1; // none
-    makeTelemJson(cmd_pos, readSonarCm(SONAR_TRIGGER_PIN, SONAR_RESPONSE_PIN), servo_pos, status);
+    makeTelemJson(status, servo_pos, cmd_pos, readSonarCm(SONAR_TRIGGER_PIN, SONAR_RESPONSE_PIN));
     if (Serial.available() > 0)
     {
         // Read command from serial input
@@ -88,7 +97,20 @@ float readSonarCm(int SONAR_TRIGGER_PIN, int SONAR_RESPONSE_PIN)
     return cm;
 }
 
-void makeTelemJson(float cmdAngle, float sonarDistance, float angle, String status)
+void printToLcd(float cmdAngle, float sonarDistance, float angle, String status)
+{
+    // Print telemetry to LCD screen
+    lcd.begin(16,2);
+    lcd.print(status);
+    lcd.setCursor(0,1);
+    lcd.print((int) cmdAngle);
+    lcd.setCursor(4,1);
+    lcd.print((int) angle);
+    lcd.setCursor(8,1);
+    lcd.print(sonarDistance);
+}
+
+void makeTelemJson(String status, float angle, float cmdAngle, float sonarDistance)
 {
     // Print a JSON-like string to the serial bus
     Serial.print("{\"status\": \"");
@@ -102,6 +124,9 @@ void makeTelemJson(float cmdAngle, float sonarDistance, float angle, String stat
     Serial.print(angle);
     Serial.print("}");
     Serial.println();
+
+    // also print telemetry to the LCD
+    printToLcd(cmdAngle, sonarDistance, angle, status);
     return;
 }
 
@@ -119,10 +144,10 @@ float moveServo(float cmd_pos)
     {
         for (angle = servo_pos; angle <= cmd_pos; angle++)
         {
-            status = "moving to position";
+            status = "moving cw";
             servo_pos = angle;
             servo.write(servo_pos);
-            makeTelemJson(cmd_pos, readSonarCm(SONAR_TRIGGER_PIN, SONAR_RESPONSE_PIN), servo_pos, status);
+            makeTelemJson(status, servo_pos, cmd_pos, readSonarCm(SONAR_TRIGGER_PIN, SONAR_RESPONSE_PIN));
             delay(SERVO_SWEEP_DELAY_MS);
         }
     }
@@ -130,11 +155,11 @@ float moveServo(float cmd_pos)
     {
         for (angle = servo_pos; angle >= cmd_pos; angle--)
         {
-            status = "moving to position";
+            status = "moving ccw";
             digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
             servo_pos = angle;
             servo.write(servo_pos);
-            makeTelemJson(cmd_pos, readSonarCm(SONAR_TRIGGER_PIN, SONAR_RESPONSE_PIN), servo_pos, status);
+            makeTelemJson(status, servo_pos, cmd_pos, readSonarCm(SONAR_TRIGGER_PIN, SONAR_RESPONSE_PIN));
             delay(SERVO_SWEEP_DELAY_MS);
         }
     }

@@ -1,7 +1,7 @@
 # canary-apps
 Tools and apps to support development of [mfc-apps](https://github.com/Brickworks/mfc-apps)
 
-## serial-cmdr.ino
+## serial-cmdr
 This Arduino project iniitalizes an Arduino microcontroller with a simple
 sensor and actuator, and demos sending telemetry and recieving commands over
 the serial port.
@@ -10,6 +10,7 @@ the serial port.
 This demo was prepared for an Arduino Uno with the following peripherals:
 * HC-SR04 Ultrasonic Rangefinder (Pins 11 & 12)
 * SG90 MicroServo (Pin 10)
+* LCD1602 LCD Display (Pins 2-7)
 
 ### Theory of Operation
 The microcontroller initializes the pins for the peripherals, then
@@ -17,11 +18,14 @@ The microcontroller initializes the pins for the peripherals, then
 
 Telemetry is transmitted as JSON-like strings (here I'll call them "packets") 
 sent over the serial port. A packet is sent every 0.5 seconds while the
-servo is idle, and every 0.015 seconds while the servo is moving.
+servo is idle, and every 0.015 seconds while the servo is moving. The telemetry
+is also displayed on the LCD screen.
+
 ```json
 // an exeample telemetry string
 {"status": "idle", "commandAngle_deg": -1.00, "sonarDistance_cm": 9.54, "servoAngle_deg": 45.00}
 ```
+
 |key|type|description|
 |---|---|---|
 |`status`|string|What the microcontroller is working on at the moment.|
