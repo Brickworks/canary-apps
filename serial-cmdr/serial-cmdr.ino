@@ -144,7 +144,7 @@ float moveServo(float cmd_pos)
     {
         for (angle = servo_pos; angle <= cmd_pos; angle++)
         {
-            status = "moving cw";
+            status = "moving ccw";
             servo_pos = angle;
             servo.write(servo_pos);
             makeTelemJson(status, servo_pos, cmd_pos, readSonarCm(SONAR_TRIGGER_PIN, SONAR_RESPONSE_PIN));
@@ -155,7 +155,7 @@ float moveServo(float cmd_pos)
     {
         for (angle = servo_pos; angle >= cmd_pos; angle--)
         {
-            status = "moving ccw";
+            status = "moving cw";
             digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
             servo_pos = angle;
             servo.write(servo_pos);
