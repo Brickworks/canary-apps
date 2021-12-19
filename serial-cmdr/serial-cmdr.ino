@@ -1,10 +1,6 @@
+#include <ArduinoJson.h>
 #include <Servo.h>
 #include <LiquidCrystal.h>
-
-// global variables
-String status;
-float cmd_pos;
-float servo_pos;
 
 // configuration settings
 int SERVO_MIN_ANGLE_DEG = 0;
@@ -21,6 +17,39 @@ const int SONAR_RESPONSE_PIN = 12;
 Servo servo;
 LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_D4, LCD_D5, LCD_D6, LCD_D7);
 
+// set up JSON telemetry structure
+struct telemetry
+{
+    String status = "not set up";
+    float cmd = -1;
+    float pos = -1;
+    float sense = -1;
+    void printToSerial()
+    {
+        StaticJsonDocument<200> doc;
+        doc["status"] = status;
+        doc["command"] = cmd;
+        doc["position"] = pos;
+        doc["sensor"] = sense;
+        serializeJsonPretty(doc, Serial);
+        Serial.flush();
+        return;
+    };
+    void printToLcd()
+    {
+        // Print telemetry to LCD screen
+        lcd.begin(16, 2);
+        lcd.print(status);
+        lcd.setCursor(0, 1);
+        lcd.print((int) cmd);
+        lcd.setCursor(4, 1);
+        lcd.print((int) pos);
+        lcd.setCursor(8, 1);
+        lcd.print(sense);
+        return;
+    };
+} telem;
+
 void setup()
 {
     // Initialize Serial Port
@@ -30,30 +59,34 @@ void setup()
     pinMode(SONAR_TRIGGER_PIN, OUTPUT);
     pinMode(SONAR_RESPONSE_PIN, INPUT);
     servo.attach(SERVO_PWM_PIN);
-
     digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
 
     // wave hello
-    makeTelemJson("initializing", -1, -1, readSonarCm(SONAR_TRIGGER_PIN, SONAR_RESPONSE_PIN));
+    telem.status = "initializing";
+    telem.sense = readSonarCm(SONAR_TRIGGER_PIN, SONAR_RESPONSE_PIN);
     moveServo(SERVO_MAX_ANGLE_DEG);
     moveServo(SERVO_MIN_ANGLE_DEG);
 }
 
 void loop()
 {
-    status = "idle";
-    cmd_pos = -1; // none
-    makeTelemJson(status, servo_pos, cmd_pos, readSonarCm(SONAR_TRIGGER_PIN, SONAR_RESPONSE_PIN));
+    telem.status = "idle";
+    telem.cmd = -1;
+    telem.sense = readSonarCm(SONAR_TRIGGER_PIN, SONAR_RESPONSE_PIN);
     if (Serial.available() > 0)
     {
         // Read command from serial input
-        cmd_pos = Serial.readString().toFloat();
-        moveServo(cmd_pos);
+        telem.cmd = parseCommandAngle(Serial.readString());
+        // move the servo
+        moveServo(telem.cmd);
+    } else {
+        telem.printToSerial();
+        telem.printToLcd();
     }
     delay(500);
 }
 
-int clamp(float input, float minLimit, float maxLimit)
+float clamp(float input, float minLimit, float maxLimit)
 {
     // clamp the input angle
     if (input < minLimit)
@@ -65,6 +98,14 @@ int clamp(float input, float minLimit, float maxLimit)
         input = maxLimit;
     }
     return input;
+}
+
+float parseCommandAngle(String commandString)
+{
+    float cmd_pos = commandString.toFloat();
+    // limit the command to the allowed range
+    cmd_pos = clamp(cmd_pos, SERVO_MIN_ANGLE_DEG, SERVO_MAX_ANGLE_DEG);
+    return cmd_pos;
 }
 
 float readSonarCm(int SONAR_TRIGGER_PIN, int SONAR_RESPONSE_PIN)
@@ -97,72 +138,40 @@ float readSonarCm(int SONAR_TRIGGER_PIN, int SONAR_RESPONSE_PIN)
     return cm;
 }
 
-void printToLcd(float cmdAngle, float sonarDistance, float angle, String status)
-{
-    // Print telemetry to LCD screen
-    lcd.begin(16,2);
-    lcd.print(status);
-    lcd.setCursor(0,1);
-    lcd.print((int) cmdAngle);
-    lcd.setCursor(4,1);
-    lcd.print((int) angle);
-    lcd.setCursor(8,1);
-    lcd.print(sonarDistance);
-}
-
-void makeTelemJson(String status, float angle, float cmdAngle, float sonarDistance)
-{
-    // Print a JSON-like string to the serial bus
-    Serial.print("{\"status\": \"");
-    Serial.print(status);
-    Serial.print('\"');
-    Serial.print(", \"commandAngle_deg\": ");
-    Serial.print(cmdAngle);
-    Serial.print(", \"sonarDistance_cm\": ");
-    Serial.print(sonarDistance);
-    Serial.print(", \"servoAngle_deg\": ");
-    Serial.print(angle);
-    Serial.print("}");
-    Serial.println();
-
-    // also print telemetry to the LCD
-    printToLcd(cmdAngle, sonarDistance, angle, status);
-    return;
-}
-
-float moveServo(float cmd_pos)
+void moveServo(float cmd_pos)
 {
     /*
         command the servo to the desired position
     */
-    float angle = servo_pos;
-    // limit the command to the allowed range
-    cmd_pos = clamp(cmd_pos, SERVO_MIN_ANGLE_DEG, SERVO_MAX_ANGLE_DEG);
+    float angle = telem.pos;
 
     // sweep servo position to the desired
-    if (cmd_pos > servo_pos)
+    if (cmd_pos > angle)
     {
-        for (angle = servo_pos; angle <= cmd_pos; angle++)
+        for (angle; angle <= cmd_pos; angle++)
         {
-            status = "moving ccw";
-            servo_pos = angle;
-            servo.write(servo_pos);
-            makeTelemJson(status, servo_pos, cmd_pos, readSonarCm(SONAR_TRIGGER_PIN, SONAR_RESPONSE_PIN));
+            digitalWrite(LED_BUILTIN, HIGH); // turn the LED on (HIGH is the voltage level)
+            telem.status = "moving ccw";
+            telem.pos = angle;
+            servo.write(angle);
+            telem.printToSerial();
+            telem.printToLcd();
             delay(SERVO_SWEEP_DELAY_MS);
         }
     }
-    else if (cmd_pos < servo_pos)
+    else if (cmd_pos < angle)
     {
-        for (angle = servo_pos; angle >= cmd_pos; angle--)
+        for (angle; angle >= cmd_pos; angle--)
         {
-            status = "moving cw";
-            digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-            servo_pos = angle;
-            servo.write(servo_pos);
-            makeTelemJson(status, servo_pos, cmd_pos, readSonarCm(SONAR_TRIGGER_PIN, SONAR_RESPONSE_PIN));
+            digitalWrite(LED_BUILTIN, HIGH); // turn the LED on (HIGH is the voltage level)
+            telem.status = "moving cw";
+            telem.pos = angle;
+            servo.write(angle);
+            telem.printToSerial();
+            telem.printToLcd();
             delay(SERVO_SWEEP_DELAY_MS);
         }
     }
-    digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
+    digitalWrite(LED_BUILTIN, LOW); // turn the LED off by making the voltage LOW
     return;
 }
