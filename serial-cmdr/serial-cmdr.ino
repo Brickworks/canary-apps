@@ -178,6 +178,7 @@ void moveServo(float cmd_pos)
                 telem.status = "moving ccw";
                 telem.pos = angle;
                 servo.write(angle);
+                telem.sense = readSonarCm(SONAR_TRIGGER_PIN, SONAR_RESPONSE_PIN);
                 telem.printToSerial();
                 telem.printToLcd();
                 delay(SERVO_SWEEP_DELAY_MS);
@@ -189,6 +190,7 @@ void moveServo(float cmd_pos)
             {
                 telem.status = "moving cw";
                 telem.pos = angle;
+                telem.sense = readSonarCm(SONAR_TRIGGER_PIN, SONAR_RESPONSE_PIN);
                 servo.write(angle);
                 telem.printToSerial();
                 telem.printToLcd();
@@ -200,6 +202,7 @@ void moveServo(float cmd_pos)
     {
         telem.pos = cmd_pos;
         servo.write(cmd_pos);
+        telem.sense = readSonarCm(SONAR_TRIGGER_PIN, SONAR_RESPONSE_PIN);
         telem.printToSerial();
         telem.printToLcd();
     }
