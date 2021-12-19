@@ -22,24 +22,19 @@ servo is idle, and every 0.015 seconds while the servo is moving. The telemetry
 is also displayed on the LCD screen.
 
 ```json
-// an exeample telemetry string
-{"status": "idle", "commandAngle_deg": -1.00, "sonarDistance_cm": 9.54, "servoAngle_deg": 45.00}
+// exeample telemetry strings
+{"status":"idle","command":"","position":0,"sensor":31.66667}
+{"status":"moving ccw","command":"{\"servo_position\":135}","position":85,"sensor":33.05842}
 ```
-
-|key|type|description|
-|---|---|---|
-|`status`|string|What the microcontroller is working on at the moment.|
-|`commandAngle_deg`|float|The currently commanded servo position (in degrees). `-1` indicates no command right now.|
-|`sonarDistance_cm`|float|The last distance measurement from the HC-SR04 (in centimeters). Large numbers usually mean loss of signal, since the measurement is based on the time-of-flight of an active "ping".|
-|`servoAngle_deg`|float|The position (in degrees) that the microcontroller thinks the servo is at.|
 
 After initialization, the microcontroller waits for data to be available on
 the serial port. All data sent to the serial port is assumed to be a string
-that can be parsed as a float. When data is available, the text is parsed as
-a float and clamped to a value between 10 and 180, which are the position 
+that can be parsed as a JSON. When data is available, the text is parsed as
+a JSON. If the JSON has a key called `servo_position`, that value is casted to
+a float and clamped to a value between 0 and 180, which are the position 
 limits of the servo.
 
-The servo is commanded to move to a new angular position smoothly in 1 degree
+The servo is commanded to move to `servo_position` smoothly in 1 degree
 increments, with a short delay in between. By changing this delay time, the
 speed of the servo can be controlled. It's hard-coded for now. A new telemetry
 packet is emitted at every step of the servo.

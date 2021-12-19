@@ -5,7 +5,7 @@
 // configuration settings
 int SERVO_MIN_ANGLE_DEG = 0;
 int SERVO_MAX_ANGLE_DEG = 180;
-int SERVO_SWEEP_DELAY_MS = 1; // milliseconds between position steps, -1 for asap
+int SERVO_SWEEP_DELAY_MS = 15; // milliseconds between position steps, -1 for asap
 
 // hardware assignments
 const int LCD_RS = 7, LCD_EN = 6, LCD_D4 = 5, LCD_D5 = 4, LCD_D6 = 3, LCD_D7 = 2;
