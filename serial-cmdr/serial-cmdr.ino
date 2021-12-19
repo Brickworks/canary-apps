@@ -5,7 +5,7 @@
 // configuration settings
 int SERVO_MIN_ANGLE_DEG = 0;
 int SERVO_MAX_ANGLE_DEG = 180;
-int SERVO_SWEEP_DELAY_MS = 15; // milliseconds between position steps
+int SERVO_SWEEP_DELAY_MS = 1; // milliseconds between position steps, -1 for asap
 
 // hardware assignments
 const int LCD_RS = 7, LCD_EN = 6, LCD_D4 = 5, LCD_D5 = 4, LCD_D6 = 3, LCD_D7 = 2;
@@ -17,22 +17,29 @@ const int SONAR_RESPONSE_PIN = 12;
 Servo servo;
 LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_D4, LCD_D5, LCD_D6, LCD_D7);
 
-// set up JSON telemetry structure
+// set up command data structure
+struct command
+{
+    String raw = "";
+    float servo_position_deg = -1;
+};
+
+// set up telemetry data structure (global)
 struct telemetry
 {
-    String status = "not set up";
-    float cmd = -1;
+    String status;
+    command cmd;
     float pos = -1;
     float sense = -1;
     void printToSerial()
     {
-        StaticJsonDocument<200> doc;
-        doc["status"] = status;
-        doc["command"] = cmd;
-        doc["position"] = pos;
-        doc["sensor"] = sense;
-        serializeJsonPretty(doc, Serial);
-        Serial.flush();
+        StaticJsonDocument<200> outDoc;
+        outDoc["status"] = status;
+        outDoc["command"] = cmd.raw;
+        outDoc["position"] = pos;
+        outDoc["sensor"] = sense;
+        serializeJson(outDoc, Serial);
+        Serial.println();
         return;
     };
     void printToLcd()
@@ -41,9 +48,9 @@ struct telemetry
         lcd.begin(16, 2);
         lcd.print(status);
         lcd.setCursor(0, 1);
-        lcd.print((int) cmd);
+        lcd.print((int)cmd.servo_position_deg);
         lcd.setCursor(4, 1);
-        lcd.print((int) pos);
+        lcd.print((int)pos);
         lcd.setCursor(8, 1);
         lcd.print(sense);
         return;
@@ -59,7 +66,7 @@ void setup()
     pinMode(SONAR_TRIGGER_PIN, OUTPUT);
     pinMode(SONAR_RESPONSE_PIN, INPUT);
     servo.attach(SERVO_PWM_PIN);
-    digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
+    // digitalWrite(LED_BUILTIN, LOW); // turn the LED off by making the voltage LOW
 
     // wave hello
     telem.status = "initializing";
@@ -70,42 +77,41 @@ void setup()
 
 void loop()
 {
+    command cmd;
+    telem.cmd = cmd;
     telem.status = "idle";
-    telem.cmd = -1;
     telem.sense = readSonarCm(SONAR_TRIGGER_PIN, SONAR_RESPONSE_PIN);
     if (Serial.available() > 0)
     {
         // Read command from serial input
-        telem.cmd = parseCommandAngle(Serial.readString());
+        String cmdString = Serial.readString();
+        cmd = parseCommand(cmdString);
+        telem.cmd = cmd;
+    }
+    telem.printToSerial();
+    telem.printToLcd();
+
+    if ((cmd.servo_position_deg != telem.pos) && (cmd.servo_position_deg > 0))
+    {
         // move the servo
-        moveServo(telem.cmd);
-    } else {
-        telem.printToSerial();
-        telem.printToLcd();
+        moveServo(cmd.servo_position_deg);
     }
     delay(500);
 }
 
-float clamp(float input, float minLimit, float maxLimit)
+command parseCommand(String cmdString)
 {
-    // clamp the input angle
-    if (input < minLimit)
-    {
-        input = minLimit;
-    }
-    else if (input > maxLimit)
-    {
-        input = maxLimit;
-    }
-    return input;
-}
+    DynamicJsonDocument inDoc(200);
+    deserializeJson(inDoc, cmdString);
+    // construct command data structure
+    command cmd;
+    cmd.servo_position_deg = (float)inDoc["servo_position"];
 
-float parseCommandAngle(String commandString)
-{
-    float cmd_pos = commandString.toFloat();
-    // limit the command to the allowed range
-    cmd_pos = clamp(cmd_pos, SERVO_MIN_ANGLE_DEG, SERVO_MAX_ANGLE_DEG);
-    return cmd_pos;
+    // add the interpreted command for debugging
+    String parsedCmdString;
+    serializeJson(inDoc, parsedCmdString);
+    cmd.raw = parsedCmdString;
+    return cmd;
 }
 
 float readSonarCm(int SONAR_TRIGGER_PIN, int SONAR_RESPONSE_PIN)
@@ -138,40 +144,64 @@ float readSonarCm(int SONAR_TRIGGER_PIN, int SONAR_RESPONSE_PIN)
     return cm;
 }
 
+float clamp(float input, float minLimit, float maxLimit)
+{
+    // clamp the input angle
+    if (input < minLimit)
+    {
+        input = minLimit;
+    }
+    else if (input > maxLimit)
+    {
+        input = maxLimit;
+    }
+    return input;
+}
+
 void moveServo(float cmd_pos)
 {
     /*
         command the servo to the desired position
     */
+    // limit the command to the allowed range
     float angle = telem.pos;
+    cmd_pos = clamp(cmd_pos, SERVO_MIN_ANGLE_DEG, SERVO_MAX_ANGLE_DEG);
+    telem.cmd.servo_position_deg = cmd_pos;
 
-    // sweep servo position to the desired
-    if (cmd_pos > angle)
+    if (SERVO_SWEEP_DELAY_MS > 0)
     {
-        for (angle; angle <= cmd_pos; angle++)
+        // sweep servo position to the desired
+        if (cmd_pos > angle)
         {
-            digitalWrite(LED_BUILTIN, HIGH); // turn the LED on (HIGH is the voltage level)
-            telem.status = "moving ccw";
-            telem.pos = angle;
-            servo.write(angle);
-            telem.printToSerial();
-            telem.printToLcd();
-            delay(SERVO_SWEEP_DELAY_MS);
+            for (angle; angle <= cmd_pos; angle++)
+            {
+                telem.status = "moving ccw";
+                telem.pos = angle;
+                servo.write(angle);
+                telem.printToSerial();
+                telem.printToLcd();
+                delay(SERVO_SWEEP_DELAY_MS);
+            }
+        }
+        else if (cmd_pos < angle)
+        {
+            for (angle; angle >= cmd_pos; angle--)
+            {
+                telem.status = "moving cw";
+                telem.pos = angle;
+                servo.write(angle);
+                telem.printToSerial();
+                telem.printToLcd();
+                delay(SERVO_SWEEP_DELAY_MS);
+            }
         }
     }
-    else if (cmd_pos < angle)
+    else
     {
-        for (angle; angle >= cmd_pos; angle--)
-        {
-            digitalWrite(LED_BUILTIN, HIGH); // turn the LED on (HIGH is the voltage level)
-            telem.status = "moving cw";
-            telem.pos = angle;
-            servo.write(angle);
-            telem.printToSerial();
-            telem.printToLcd();
-            delay(SERVO_SWEEP_DELAY_MS);
-        }
+        telem.pos = cmd_pos;
+        servo.write(cmd_pos);
+        telem.printToSerial();
+        telem.printToLcd();
     }
-    digitalWrite(LED_BUILTIN, LOW); // turn the LED off by making the voltage LOW
     return;
 }
